@@ -527,7 +527,25 @@ struct ContentView: View {
     private func executeSignatureAndRespond() {
         log("Signing challenge using Private Key...", type: "[Crypto]")
         
-        let keyIdHex = cryptoManager.generateKeyPair(username: username)?.publicKeyHex.prefix(16).lowercased() ?? "mock-keyid-hex"
+        var keyIdHex = ""
+        if ceremonyType == "registration" {
+            // Generate a fresh key pair for registration
+            if let keys = cryptoManager.generateKeyPair(username: username) {
+                keyIdHex = String(keys.publicKeyHex.prefix(16)).lowercased()
+            } else {
+                keyIdHex = "mock-keyid-hex"
+            }
+        } else {
+            // Load existing public key to derive the credential ID (keyIdHex)
+            if let publicKeyData = UserDefaults.standard.data(forKey: "passkey_public_\(username)") {
+                let publicKeyHex = publicKeyData.map { String(format: "%02hhx", $0) }.joined()
+                keyIdHex = String(publicKeyHex.prefix(16)).lowercased()
+            } else {
+                // Fallback if no key exists
+                keyIdHex = "mock-keyid-hex"
+            }
+        }
+        
         let keyId = Data(keyIdHex.utf8)
         let keyIdB64Url = base64UrlEncode(keyId)
 
