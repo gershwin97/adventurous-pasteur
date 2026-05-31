@@ -78,6 +78,28 @@ function getOrigin(req) {
   return `${protocol}://${req.get('host')}`;
 }
 
+// Helper to get all allowed origins and RP IDs for FIDO validation
+function getAllowedOriginsAndRpIds(req) {
+  const reqOrigin = getOrigin(req);
+  const reqRpId = getRpId(req);
+  
+  const origins = [reqOrigin, 'http://localhost:3000', 'http://127.0.0.1:3000'];
+  const rpIds = [reqRpId, 'localhost', '127.0.0.1'];
+  
+  const networkInterfaces = require('os').networkInterfaces();
+  for (const name in networkInterfaces) {
+    const interfaces = networkInterfaces[name];
+    for (const iface of interfaces) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        origins.push(`http://${iface.address}:3000`);
+        origins.push(`https://${iface.address}:3000`);
+        rpIds.push(iface.address);
+      }
+    }
+  }
+  return { origins, rpIds };
+}
+
 // Config route to determine server local network IP address dynamically
 app.get('/api/config', (req, res) => {
   const networkInterfaces = require('os').networkInterfaces();
@@ -138,15 +160,14 @@ app.post('/api/auth/verify-registration', async (req, res) => {
     return res.status(400).json({ error: 'No active registration challenge found for user' });
   }
 
-  const rpID = getRpId(req);
-  const origin = getOrigin(req);
+  const { origins, rpIds } = getAllowedOriginsAndRpIds(req);
 
   try {
     const verification = await verifyRegistrationResponse({
       response: credential,
       expectedChallenge: expectedChallenge,
-      expectedOrigin: origin,
-      expectedRPID: rpID,
+      expectedOrigin: origins,
+      expectedRPID: rpIds,
     });
 
     if (verification.verified) {
@@ -227,15 +248,14 @@ app.post('/api/auth/verify-assertion', async (req, res) => {
     return res.status(400).json({ error: 'No registered credential found for user' });
   }
 
-  const rpID = getRpId(req);
-  const origin = getOrigin(req);
+  const { origins, rpIds } = getAllowedOriginsAndRpIds(req);
 
   try {
     const verification = await verifyAuthenticationResponse({
       response: assertion,
       expectedChallenge: expectedChallenge,
-      expectedOrigin: origin,
-      expectedRPID: rpID,
+      expectedOrigin: origins,
+      expectedRPID: rpIds,
       authenticator: {
         credentialID: Buffer.from(userCredential.credentialID, 'base64'),
         credentialPublicKey: Buffer.from(userCredential.publicKey, 'base64'),
