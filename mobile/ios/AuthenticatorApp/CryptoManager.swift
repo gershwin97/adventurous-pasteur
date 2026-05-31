@@ -21,8 +21,8 @@ class CryptoManager {
         let publicKeyData = publicKey.rawRepresentation
         
         // Save raw key data in UserDefaults (in production, use iOS Keychain)
-        UserDefaults.standard.set(privateKeyData, forKey: "passkey_private_\(username)")
-        UserDefaults.standard.set(publicKeyData, forKey: "passkey_public_\(username)")
+        UserDefaults.standard.set(privateKeyData, forKey: "passkey_private")
+        UserDefaults.standard.set(publicKeyData, forKey: "passkey_public")
         
         return (privateKeyData.map { String(format: "%02hhx", $0) }.joined(),
                 publicKeyData.map { String(format: "%02hhx", $0) }.joined())
@@ -30,7 +30,7 @@ class CryptoManager {
 
     // Retrieve the public key coordinates for COSE mapping
     func getPublicKeyCoordinates(username: String) -> (x: Data, y: Data)? {
-        guard let publicKeyData = UserDefaults.standard.data(forKey: "passkey_public_\(username)"),
+        guard let publicKeyData = UserDefaults.standard.data(forKey: "passkey_public"),
               let publicKey = try? P256.Signing.PublicKey(rawRepresentation: publicKeyData) else {
             return nil
         }
@@ -44,7 +44,7 @@ class CryptoManager {
 
     // Sign challenge data using standard ECDSA P-256 SHA-256
     func sign(challengeData: Data, username: String) -> Data? {
-        guard let privateKeyData = UserDefaults.standard.data(forKey: "passkey_private_\(username)"),
+        guard let privateKeyData = UserDefaults.standard.data(forKey: "passkey_private"),
               let privateKey = try? P256.Signing.PrivateKey(rawRepresentation: privateKeyData) else {
             return nil
         }

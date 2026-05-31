@@ -537,7 +537,7 @@ struct ContentView: View {
             }
         } else {
             // Load existing public key to derive the credential ID (keyIdHex)
-            if let publicKeyData = UserDefaults.standard.data(forKey: "passkey_public_\(username)") {
+            if let publicKeyData = UserDefaults.standard.data(forKey: "passkey_public") {
                 let publicKeyHex = publicKeyData.map { String(format: "%02hhx", $0) }.joined()
                 keyIdHex = String(publicKeyHex.prefix(16)).lowercased()
             } else {
