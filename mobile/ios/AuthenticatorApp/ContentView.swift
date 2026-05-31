@@ -178,6 +178,9 @@ struct ContentView: View {
                     .font(.title2)
                     .fontWeight(.bold)
                     .foregroundColor(.white)
+                Text("Session ID: \(String(sessionId.prefix(8)))...")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.green)
                 Text("Performing BLE proximity scanning...")
                     .font(.subheadline)
                     .foregroundColor(.gray)
@@ -206,6 +209,16 @@ struct ContentView: View {
             
             // Relayed Metadata Details Card
             VStack(spacing: 12) {
+                HStack {
+                    Text("Session ID:")
+                        .foregroundColor(.gray)
+                    Spacer()
+                    Text(String(sessionId.prefix(8)) + "...")
+                        .font(.system(.body, design: .monospaced))
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                }
+                Divider().background(Color.white.opacity(0.08))
                 HStack {
                     Text("User Account:")
                         .foregroundColor(.gray)
@@ -369,6 +382,7 @@ struct ContentView: View {
             port = url.port != nil ? String(url.port!) : "3000"
             
             errorMessage = ""
+            log("Connecting to session: \(sessionId)", type: "[Tunnel]")
             
             // Establish WebSocket client
             currentScreen = .processing
@@ -401,6 +415,7 @@ struct ContentView: View {
             }
             
             errorMessage = ""
+            log("Connecting to session: \(sessionId)", type: "[Tunnel]")
             
             // Establish WebSocket client
             currentScreen = .processing
