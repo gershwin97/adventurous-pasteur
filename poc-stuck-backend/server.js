@@ -28,8 +28,10 @@ app.use(express.static(path.join(__dirname, '../browser')));
 // Serve the mobile simulator PWA at /mobile
 app.use('/mobile', express.static(path.join(__dirname, '../mobile/simulator')));
 
-// Simple JSON Database layer
-const dbPath = path.join(__dirname, 'db.json');
+// Simple JSON Database layer (uses db.test.json during tests to prevent wiping the main database)
+const dbPath = process.env.NODE_ENV === 'test'
+  ? path.join(__dirname, 'db.test.json')
+  : path.join(__dirname, 'db.json');
 function getDb() {
   if (!fs.existsSync(dbPath)) {
     fs.writeFileSync(dbPath, JSON.stringify({ users: {}, credentials: {} }, null, 2));

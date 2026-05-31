@@ -1,3 +1,4 @@
+process.env.NODE_ENV = 'test';
 const crypto = require('crypto');
 const WebSocket = require('ws');
 const cryptoHelper = require('../cryptoHelper');
@@ -53,7 +54,7 @@ describe('Relying Party Backend API & WebSocket Tunnel', () => {
 
   const fs = require('fs');
   const path = require('path');
-  const dbPath = path.join(__dirname, '../db.json');
+  const dbPath = path.join(__dirname, '../db.test.json');
 
   beforeAll((done) => {
     // Seed db.json with a mock credential for alice so login-options has a registered passkey
