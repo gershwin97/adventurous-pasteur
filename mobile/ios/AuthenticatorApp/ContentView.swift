@@ -538,6 +538,12 @@ struct ContentView: View {
                     }
                 } else {
                     ceremonyType = "login"
+                    // Load username from local authenticator storage if available
+                    if let storedUsername = UserDefaults.standard.string(forKey: "passkey_username") {
+                        username = storedUsername
+                    } else if let optUsername = options["username"] as? String {
+                        username = optUsername
+                    }
                 }
                 
                 currentScreen = .approve

@@ -23,6 +23,7 @@ class CryptoManager {
         // Save raw key data in UserDefaults (in production, use iOS Keychain)
         UserDefaults.standard.set(privateKeyData, forKey: "passkey_private")
         UserDefaults.standard.set(publicKeyData, forKey: "passkey_public")
+        UserDefaults.standard.set(username, forKey: "passkey_username")
         
         return (privateKeyData.map { String(format: "%02hhx", $0) }.joined(),
                 publicKeyData.map { String(format: "%02hhx", $0) }.joined())

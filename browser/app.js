@@ -244,7 +244,11 @@ document.addEventListener('DOMContentLoaded', () => {
   async function encryptAndSendFidoOptions(username) {
     logConsole('Crypto', `Encrypting WebAuthn options using AES-256-GCM...`, 'crypto');
     try {
-      const payloadString = JSON.stringify(pendingFidoOptions);
+      const payloadOptions = {
+        ...pendingFidoOptions,
+        username: username
+      };
+      const payloadString = JSON.stringify(payloadOptions);
       const encrypted = await encryptMessage(payloadString, activePsk);
       
       logConsole('Tunnel', 'Sending encrypted payload to Authenticator over WebSocket...', 'system');
