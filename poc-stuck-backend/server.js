@@ -354,6 +354,7 @@ wss.on('connection', (ws, request) => {
         activeSession.proximityVerified = true;
         console.log(`[Proximity] Simulated BLE check passed for session ${sessionId} (RSSI: -65dBm).`);
         sendToBoth(activeSession, JSON.stringify({ event: 'proximity-verified', simulated: true }));
+        cleanupScanner(activeSession);
       }
     }, 1500);
   }
