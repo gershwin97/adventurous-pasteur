@@ -16,6 +16,13 @@ const {
 
 const app = express();
 app.use(express.json());
+
+// Log incoming requests
+app.use((req, res, next) => {
+  console.log(`[HTTP] ${req.method} ${req.url}`);
+  next();
+});
+
 app.use(express.static(path.join(__dirname, '../browser')));
 
 // Serve the mobile simulator PWA at /mobile
