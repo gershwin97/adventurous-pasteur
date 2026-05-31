@@ -311,7 +311,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // For simplicity, we construct a raw CBOR representation of attestationObject.
     // Instead of importing a heavy CBOR library, we build a helper that serializes a minimal P-256 key into COSE map
     const cosePublicKey = serializeJwkToCose(jwkPublicKey);
-    const authData = buildAuthenticatorData(rpID, keyId, cosePublicKey);
+    localStorage.setItem('passkey_counter', '1');
+    const authData = buildAuthenticatorData(rpID, keyId, cosePublicKey, 1);
     
     // Attestation mapping: { "fmt": "none", "attStmt": {}, "authData": authData }
     const attestationObject = buildMockAttestationObject(authData);
@@ -366,7 +367,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const clientDataJSON = base64url(clientDataJSONBytes);
 
     // 3. Construct Authenticator Data (37 bytes: 32-byte RP ID hash, 1-byte flag, 4-byte counter)
-    const authData = buildMockAuthDataForAssertion(rpID);
+    const savedCounter = parseInt(localStorage.getItem('passkey_counter') || '1', 10);
+    const nextCounter = savedCounter + 1;
+    localStorage.setItem('passkey_counter', nextCounter.toString());
+    const authData = buildMockAuthDataForAssertion(rpID, nextCounter);
 
     // 4. Cryptographic Signature (ECDSA P-256 SHA-256)
     // Signed data = authData concatenated with SHA-256 hash of clientDataJSON
@@ -508,7 +512,16 @@ document.addEventListener('DOMContentLoaded', () => {
     return cose;
   }
 
-  function buildAuthenticatorData(rpID, keyId, cosePublicKey) {
+  function uint32ToBytes(val) {
+    const arr = new Uint8Array(4);
+    arr[0] = (val >>> 24) & 0xff;
+    arr[1] = (val >>> 16) & 0xff;
+    arr[2] = (val >>> 8) & 0xff;
+    arr[3] = val & 0xff;
+    return arr;
+  }
+
+  function buildAuthenticatorData(rpID, keyId, cosePublicKey, counter) {
     // Authenticator Data (authData) structure:
     // - rpIdHash: 32 bytes (SHA-256 of RP ID)
     // - flags: 1 byte (User Present + User Verified + Attested Cred Data = 0x45)
@@ -532,7 +545,7 @@ document.addEventListener('DOMContentLoaded', () => {
     rpIdHash.set(hash, 0);
 
     const flags = 0x45; // UP (0x01) | UV (0x04) | AT (0x40)
-    const signCount = new Uint8Array([0, 0, 0, 1]);
+    const signCount = uint32ToBytes(counter);
     const aaguid = new Uint8Array(16); // 16 bytes zero AAGUID
     
     const keyIdBytes = hexToBuf(keyId);
@@ -598,7 +611,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return base64url(attestation);
   }
 
-  function buildMockAuthDataForAssertion(rpID) {
+  function buildMockAuthDataForAssertion(rpID, counter) {
     // Assertions don't need credential information in authData, just rpIdHash, flags, counter
     const encoder = new TextEncoder();
     const rpIdBytes = encoder.encode(rpID);
@@ -607,7 +620,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const authData = new Uint8Array(32 + 1 + 4);
     authData.set(rpIdHash, 0);
     authData[32] = 0x05; // User Present (0x01) | User Verified (0x04)
-    authData.set(new Uint8Array([0, 0, 0, 2]), 33); // Counter = 2
+    authData.set(uint32ToBytes(counter), 33);
     
     return authData;
   }

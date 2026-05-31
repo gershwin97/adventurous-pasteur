@@ -549,6 +549,20 @@ struct ContentView: View {
         let keyId = Data(keyIdHex.utf8)
         let keyIdB64Url = base64UrlEncode(keyId)
 
+        // Monotonic Signature Counter logic
+        let counter: UInt32
+        if ceremonyType == "registration" {
+            UserDefaults.standard.set(1, forKey: "passkey_counter")
+            counter = 1
+            log("Registering passkey. Signature counter reset to 1.", type: "[Crypto]")
+        } else {
+            let savedCounter = UserDefaults.standard.integer(forKey: "passkey_counter")
+            let nextCounter = (savedCounter == 0 ? 1 : savedCounter) + 1
+            UserDefaults.standard.set(nextCounter, forKey: "passkey_counter")
+            counter = UInt32(nextCounter)
+            log("Authenticating. Incrementing signature counter to \(counter).", type: "[Crypto]")
+        }
+
         // Mock WebAuthn assertion signature
         let clientDataJSONObj: [String: Any] = [
             "type": ceremonyType == "registration" ? "webauthn.create" : "webauthn.get",
@@ -570,7 +584,7 @@ struct ContentView: View {
             // SimpleWebAuthn requires credentialID and public key bytes inside attestationObject
             let mockCoords = cryptoManager.getPublicKeyCoordinates(username: username) ?? (x: Data(repeating: 0, count: 32), y: Data(repeating: 0, count: 32))
             let cosePublicKey = serializeToCose(x: mockCoords.x, y: mockCoords.y)
-            let authData = buildAuthData(rpID: fidoRpId, keyId: Data(keyIdHex.utf8), coseKey: cosePublicKey)
+            let authData = buildAuthData(rpID: fidoRpId, keyId: Data(keyIdHex.utf8), coseKey: cosePublicKey, counter: counter)
             let attestationObj = buildAttestationObject(authData: authData)
             
             responseObj = [
@@ -585,7 +599,7 @@ struct ContentView: View {
             ]
         } else {
             // Construct mock assertion response
-            let authData = buildAuthDataForAssertion(rpID: fidoRpId)
+            let authData = buildAuthDataForAssertion(rpID: fidoRpId, counter: counter)
             
             // Build signature input = authData + SHA-256(clientDataJSON)
             let clientDataHash = SHA256.hash(data: clientDataJSONData)
@@ -648,7 +662,12 @@ struct ContentView: View {
         return cose
     }
 
-    private func buildAuthData(rpID: String, keyId: Data, coseKey: Data) -> Data {
+    private func uint32ToData(_ value: UInt32) -> Data {
+        var bigEndian = value.bigEndian
+        return Data(bytes: &bigEndian, count: 4)
+    }
+
+    private func buildAuthData(rpID: String, keyId: Data, coseKey: Data, counter: UInt32) -> Data {
         var authData = Data()
         
         // rpIdHash
@@ -660,7 +679,7 @@ struct ContentView: View {
         authData.append(0x45) // UP + UV + AT
         
         // counter
-        authData.append(contentsOf: [0, 0, 0, 1])
+        authData.append(uint32ToData(counter))
         
         // aaguid (16 bytes zeros)
         authData.append(Data(repeating: 0, count: 16))
@@ -712,13 +731,13 @@ struct ContentView: View {
         return base64UrlEncode(attObj)
     }
 
-    private func buildAuthDataForAssertion(rpID: String) -> Data {
+    private func buildAuthDataForAssertion(rpID: String, counter: UInt32) -> Data {
         var authData = Data()
         let rpIdData = Data(rpID.utf8)
         let hash = SHA256.hash(data: rpIdData)
         authData.append(Data(hash))
         authData.append(0x05) // UP + UV
-        authData.append(contentsOf: [0, 0, 0, 2]) // counter 2
+        authData.append(uint32ToData(counter))
         return authData
     }
 
