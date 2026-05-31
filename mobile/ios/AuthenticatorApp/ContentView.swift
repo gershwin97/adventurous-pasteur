@@ -1,7 +1,8 @@
 import SwiftUI
 import LocalAuthentication
+import CryptoKit
 
-struct ContentView: View, TunnelClientDelegate {
+struct ContentView: View {
     // UI Navigation State
     enum Screen {
         case connect, processing, approve, success
@@ -31,6 +32,7 @@ struct ContentView: View, TunnelClientDelegate {
     private let tunnelClient = TunnelClient()
     private let cryptoManager = CryptoManager.shared
     private let bleAdvertiser = BLEAdvertiser.shared
+    private let coordinator = TunnelCoordinator()
 
     var body: some View {
         ZStack {
@@ -58,7 +60,19 @@ struct ContentView: View, TunnelClientDelegate {
             .padding()
         }
         .onAppear {
-            tunnelClient.delegate = self
+            coordinator.onConnect = {
+                self.tunnelClientDidConnect()
+            }
+            coordinator.onDisconnect = {
+                self.tunnelClientDidDisconnect()
+            }
+            coordinator.onMessage = { text in
+                self.tunnelClientDidReceiveMessage(text: text)
+            }
+            coordinator.onError = { error in
+                self.tunnelClientDidEncounterError(error: error)
+            }
+            tunnelClient.delegate = coordinator
             log("Authenticator app initialized. Ready.", type: "[System]")
         }
         .sheet(isPresented: $isShowingScanner) {
@@ -657,5 +671,28 @@ struct ContentView: View, TunnelClientDelegate {
     private func log(_ message: String, type: String = "[System]") {
         let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
         logs.append("[\(timestamp)] \(type) \(message)")
+    }
+}
+
+class TunnelCoordinator: TunnelClientDelegate {
+    var onConnect: (() -> Void)?
+    var onDisconnect: (() -> Void)?
+    var onMessage: ((String) -> Void)?
+    var onError: ((Error) -> Void)?
+    
+    func tunnelClientDidConnect() {
+        onConnect?()
+    }
+    
+    func tunnelClientDidDisconnect() {
+        onDisconnect?()
+    }
+    
+    func tunnelClientDidReceiveMessage(text: String) {
+        onMessage?(text)
+    }
+    
+    func tunnelClientDidEncounterError(error: Error) {
+        onError?(error)
     }
 }

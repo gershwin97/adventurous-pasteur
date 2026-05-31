@@ -5,3 +5,5 @@ poc-stuck-backend/db.json
 .DS_Store
 .env
 poc-stuck-backend/.env
+mobile/ios/build/
+test-results.txt
