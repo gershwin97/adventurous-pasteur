@@ -416,7 +416,7 @@ struct ContentView: View {
             tunnelClient.connect(url: url, deviceType: "ios")
             #endif
         } else {
-            // Format 2: Colon-separated Bypass Token (SessionID:PSK:HostIP:Port)
+            // Format 2: Colon-separated Bypass Token (SessionID:PSK:HostIP:Port:Username:CeremonyType)
             let parts = trimmedData.components(separatedBy: ":")
             guard parts.count >= 4 else {
                 errorMessage = "Invalid token format. Expected JSON or SessionID:PSK:HostIP:Port."
@@ -428,9 +428,17 @@ struct ContentView: View {
             hostIp = parts[2]
             port = parts[3]
             
-            // Default ceremony properties for fallback
-            ceremonyType = "login"
-            username = "alice"
+            // Extract optional username and ceremonyType from token parts
+            if parts.count >= 6 {
+                username = parts[4]
+                ceremonyType = parts[5]
+            } else if parts.count >= 5 {
+                username = parts[4]
+                ceremonyType = "login"
+            } else {
+                username = "alice"
+                ceremonyType = "login"
+            }
             
             let tunnelUrlStr = "ws://\(hostIp):\(port)/tunnel/\(sessionId)"
             guard let url = URL(string: tunnelUrlStr) else {

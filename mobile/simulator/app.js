@@ -51,7 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const rawToken = tokenInput.value.trim();
     if (!rawToken) return showBannerError('Please paste a session token');
     
-    // Parse Token (Format: SessionID:PSK:HostIP:Port)
+    // Parse Token (Format: SessionID:PSK:HostIP:Port:Username:CeremonyType)
     const parts = rawToken.split(':');
     if (parts.length < 4) return showBannerError('Invalid token format');
     
@@ -59,6 +59,17 @@ document.addEventListener('DOMContentLoaded', () => {
     activePsk = parts[1];
     activeHostIp = parts[2];
     activePort = parts[3];
+    
+    if (parts.length >= 6) {
+      username = parts[4];
+      ceremonyType = parts[5];
+    } else if (parts.length >= 5) {
+      username = parts[4];
+      ceremonyType = 'login';
+    } else {
+      username = 'alice';
+      ceremonyType = 'login';
+    }
     
     logAppConsole('Token', 'Parsed manual session token.', 'system');
     connectToTunnel();
@@ -247,7 +258,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const isReg = fidoOptions.rp && fidoOptions.user;
     ceremonyType = isReg ? 'registration' : 'login';
     
-    username = isReg ? fidoOptions.user.name : (fidoOptions.allowCredentials ? 'alice' : 'Unknown');
+    // Use the parsed username from the token as fallback if it's a login ceremony
+    username = isReg ? fidoOptions.user.name : (username || 'alice');
  
     // Bind metadata details
     metaOrigin.textContent = fidoOptions.rpId || 'localhost';

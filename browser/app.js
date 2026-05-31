@@ -127,10 +127,10 @@ document.addEventListener('DOMContentLoaded', () => {
       verificationCodeEl.textContent = verificationCode;
     }
 
-    // 2. Generate Bypass Session Token (SessionID:PSK:HostIP:Port)
+    // 2. Generate Bypass Session Token (SessionID:PSK:HostIP:Port:Username:CeremonyType)
     const hostIp = serverConfig ? serverConfig.localIp : window.location.hostname;
     const port = serverConfig ? serverConfig.port : window.location.port;
-    const bypassToken = `${activeSessionId}:${activePsk}:${hostIp}:${port}`;
+    const bypassToken = `${activeSessionId}:${activePsk}:${hostIp}:${port}:${username}:${ceremonyType}`;
     bypassTokenCode.textContent = bypassToken;
 
     logConsole('Crypto', `Session initialized. SessionID: ${activeSessionId.substring(0,8)}...`, 'crypto');
