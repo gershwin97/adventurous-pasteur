@@ -465,6 +465,17 @@ struct ContentView: View {
                 fidoChallenge = options["challenge"] as? String ?? ""
                 fidoRpId = options["rpId"] as? String ?? (options["rp"] as? [String: Any])?["id"] as? String ?? "localhost"
                 
+                // Dynamically detect ceremony type
+                if options["user"] != nil && options["rp"] != nil {
+                    ceremonyType = "registration"
+                    if let userObj = options["user"] as? [String: Any],
+                       let userNameStr = userObj["name"] as? String {
+                        username = userNameStr
+                    }
+                } else {
+                    ceremonyType = "login"
+                }
+                
                 currentScreen = .approve
             } else {
                 log("Decryption failed. Invalid PSK.", type: "[Crypto]")
