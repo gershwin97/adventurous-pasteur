@@ -268,6 +268,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } catch (err) {
       logConsole('Auth', `Registration validation failed: ${err.message}`, 'error');
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ event: 'relay', error: err.message }));
+      }
     }
   }
 
@@ -288,6 +291,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } catch (err) {
       logConsole('Auth', `Login validation failed: ${err.message}`, 'error');
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ event: 'relay', error: err.message }));
+      }
     }
   }
 

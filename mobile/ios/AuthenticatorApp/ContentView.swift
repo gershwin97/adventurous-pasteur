@@ -443,6 +443,14 @@ struct ContentView: View {
             return
         }
         
+        // Check for relayed errors from the browser portal
+        if let errMsg = json["error"] as? String {
+            log("Error: \(errMsg)", type: "[Error]")
+            errorMessage = errMsg
+            currentScreen = .connect
+            return
+        }
+        
         // Check for proximity-verified event
         if let event = json["event"] as? String, event == "proximity-verified" {
             log("BLE proximity verified by browser. Tunnel unlocked.", type: "[Proximity]")
@@ -559,8 +567,15 @@ struct ContentView: View {
             ]
         } else {
             // Construct mock assertion response
-            let signature = cryptoManager.sign(challengeData: Data(fidoChallenge.utf8), username: username) ?? Data(repeating: 0, count: 64)
             let authData = buildAuthDataForAssertion(rpID: fidoRpId)
+            
+            // Build signature input = authData + SHA-256(clientDataJSON)
+            let clientDataHash = SHA256.hash(data: clientDataJSONData)
+            var signatureInput = Data()
+            signatureInput.append(authData)
+            signatureInput.append(Data(clientDataHash))
+            
+            let signature = cryptoManager.sign(challengeData: signatureInput, username: username) ?? Data(repeating: 0, count: 64)
             
             responseObj = [
                 "id": keyIdB64Url,
