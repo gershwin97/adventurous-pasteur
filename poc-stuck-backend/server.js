@@ -276,7 +276,7 @@ wss.on('connection', (ws, request) => {
   const pathParts = urlParts[0].split('/');
   const sessionId = pathParts[2];
   const queryParams = new URLSearchParams(urlParts[1] || '');
-  const role = queryParams.get('role'); // "browser" or "mobile"
+  const role = queryParams.get('role') || 'mobile'; // "browser" or "mobile", default to mobile
   const deviceType = queryParams.get('device-type'); // "simulator" if mobile simulator
 
   if (!sessionId) {

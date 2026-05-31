@@ -20,10 +20,12 @@ class TunnelClient: NSObject {
         // Append device-type parameters to let server recognize simulation states
         var urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false)
         let deviceParam = URLQueryItem(name: "device-type", value: deviceType)
+        let roleParam = URLQueryItem(name: "role", value: "mobile")
         if urlComponents?.queryItems != nil {
             urlComponents?.queryItems?.append(deviceParam)
+            urlComponents?.queryItems?.append(roleParam)
         } else {
-            urlComponents?.queryItems = [deviceParam]
+            urlComponents?.queryItems = [deviceParam, roleParam]
         }
 
         guard let requestUrl = urlComponents?.url else { return }
