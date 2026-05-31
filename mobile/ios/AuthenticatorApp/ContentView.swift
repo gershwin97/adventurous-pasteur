@@ -344,35 +344,72 @@ struct ContentView: View {
     // --- Parser & WS Initiator ---
 
     private func parseAndConnect(_ data: String) {
-        guard let dataObj = data.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: dataObj) as? [String: String] else {
-            errorMessage = "Failed to parse session token."
-            return
+        let trimmedData = data.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if trimmedData.hasPrefix("{") {
+            // Format 1: Raw JSON string from QR Code
+            guard let dataObj = trimmedData.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: dataObj) as? [String: String] else {
+                errorMessage = "Failed to parse JSON session token."
+                return
+            }
+            
+            sessionId = json["sessionId"] ?? ""
+            psk = json["psk"] ?? ""
+            ceremonyType = json["type"] ?? "login"
+            username = json["username"] ?? "alice"
+            
+            guard let tunnelStr = json["tunnelUrl"],
+                  let url = URL(string: tunnelStr) else {
+                errorMessage = "Invalid websocket URL."
+                return
+            }
+            
+            hostIp = url.host ?? "localhost"
+            port = url.port != nil ? String(url.port!) : "3000"
+            
+            errorMessage = ""
+            
+            // Establish WebSocket client
+            currentScreen = .processing
+            #if targetEnvironment(simulator)
+            tunnelClient.connect(url: url, deviceType: "simulator")
+            #else
+            tunnelClient.connect(url: url, deviceType: "ios")
+            #endif
+        } else {
+            // Format 2: Colon-separated Bypass Token (SessionID:PSK:HostIP:Port)
+            let parts = trimmedData.components(separatedBy: ":")
+            guard parts.count >= 4 else {
+                errorMessage = "Invalid token format. Expected JSON or SessionID:PSK:HostIP:Port."
+                return
+            }
+            
+            sessionId = parts[0]
+            psk = parts[1]
+            hostIp = parts[2]
+            port = parts[3]
+            
+            // Default ceremony properties for fallback
+            ceremonyType = "login"
+            username = "alice"
+            
+            let tunnelUrlStr = "ws://\(hostIp):\(port)/tunnel/\(sessionId)"
+            guard let url = URL(string: tunnelUrlStr) else {
+                errorMessage = "Failed to build websocket URL."
+                return
+            }
+            
+            errorMessage = ""
+            
+            // Establish WebSocket client
+            currentScreen = .processing
+            #if targetEnvironment(simulator)
+            tunnelClient.connect(url: url, deviceType: "simulator")
+            #else
+            tunnelClient.connect(url: url, deviceType: "ios")
+            #endif
         }
-        
-        sessionId = json["sessionId"] ?? ""
-        psk = json["psk"] ?? ""
-        ceremonyType = json["type"] ?? "login"
-        username = json["username"] ?? "alice"
-        
-        guard let tunnelStr = json["tunnelUrl"],
-              let url = URL(string: tunnelStr) else {
-            errorMessage = "Invalid websocket URL."
-            return
-        }
-        
-        hostIp = url.host ?? "localhost"
-        port = url.port != nil ? String(url.port!) : "3000"
-        
-        errorMessage = ""
-        
-        // 1. Establish WebSocket client
-        currentScreen = .processing
-        #if targetEnvironment(simulator)
-        tunnelClient.connect(url: url, deviceType: "simulator")
-        #else
-        tunnelClient.connect(url: url, deviceType: "ios")
-        #endif
     }
 
     // --- Tunnel Client Delegate ---
