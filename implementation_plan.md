@@ -29,7 +29,10 @@ adventurous-pasteur/
     │       ├── QRScannerView.swift    # Camera scanner (AVFoundation)
     │       ├── BLEAdvertiser.swift    # CoreBluetooth advertiser
     │       ├── CryptoManager.swift    # CryptoKit wrapper (P-256, GCM)
-    │       └── TunnelClient.swift     # URLSessionWebSocketTask client
+    │       ├── TunnelClient.swift     # URLSessionWebSocketTask client
+    │       └── CredentialProviderExtension/ # Custom Passkey Provider Target
+    │           ├── CredentialProviderViewController.swift # Autofill ViewController
+    │           └── Info.plist         # Extension configuration
     └── simulator/
         ├── index.html          # Mobile Responsive Web PWA Simulator
         ├── style.css           # Mobile simulator CSS
@@ -152,3 +155,20 @@ We will edit the following components:
   - Verify that the biometrics approval screen is displayed *before* the 1.5s simulator proximity check finishes.
   - Verify that the matching 4-digit code is visible on both Chrome and the Simulator.
   - Verify that the approval button is disabled, showing a scanning indicator, and unlocks only when the check passes.
+
+---
+
+## 6. System-Wide AutoFill Passkey Extension Integration
+
+To register your app natively with iOS to serve as a password/passkey system autofill manager:
+
+### Target Configuration
+1. **Target Creation**: In Xcode, create a new target using the **Credential Provider Extension** template.
+2. **Swift Controller ([CredentialProviderViewController.swift](file:///Users/gershwin/Documents/antigravity/adventurous-pasteur/mobile/ios/CredentialProviderExtension/CredentialProviderViewController.swift))**: Inherits from `ASCredentialProviderViewController` to handle password/passkey autofill queries. It cross-references the requesting domain (RP ID) against local registered credentials and returns ECDSA P-256 assertions authenticated via FaceID/TouchID.
+3. **plist Parameters ([Info.plist](file:///Users/gershwin/Documents/antigravity/adventurous-pasteur/mobile/ios/CredentialProviderExtension/Info.plist))**: Configured with `com.apple.authentication-services-credential-provider` extension point identifier to register your custom app within the global iOS AutoFill registry.
+
+### Provisioning & Domains
+* Add the **Associated Domains** capability to the targets: `webcredentials:yourdomain.com`.
+* Publish the Apple-App-Site-Association (AASA) trust file containing your App Bundle ID on the Relying Party server at: `https://yourdomain.com/.well-known/apple-app-site-association`.
+* Activate the integration under **Settings > Passwords > Password Options** (or **AutoFill Passwords & Passkeys**) on the device.
+

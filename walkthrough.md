@@ -31,6 +31,8 @@ All directories and source code have been created in your workspace:
 *   [TunnelClient.swift](file:///Users/gershwin/Documents/antigravity/adventurous-pasteur/mobile/ios/AuthenticatorApp/TunnelClient.swift): WebSocket connection helper using native `URLSessionWebSocketTask` with automated ping/pong keepalive.
 *   [QRScannerView.swift](file:///Users/gershwin/Documents/antigravity/adventurous-pasteur/mobile/ios/AuthenticatorApp/QRScannerView.swift): UIKit bridge wrapping `AVCaptureSession` for camera feeds, with text fallback inside the simulator.
 *   [AuthenticatorApp.swift](file:///Users/gershwin/Documents/antigravity/adventurous-pasteur/mobile/ios/AuthenticatorApp/AuthenticatorApp.swift): Entry point struct.
+*   [CredentialProviderViewController.swift](file:///Users/gershwin/Documents/antigravity/adventurous-pasteur/mobile/ios/CredentialProviderExtension/CredentialProviderViewController.swift): System Credential Provider Extension handling AutoFill passkey queries.
+*   [Info.plist](file:///Users/gershwin/Documents/antigravity/adventurous-pasteur/mobile/ios/CredentialProviderExtension/Info.plist): Configuration file mapping the system extension point.
 
 ---
 
@@ -368,3 +370,21 @@ During the final physical device testing, we implemented the following enhanceme
 
 ### D. Authenticator Proximity Lock
 * **The Fix**: Aligned the native SwiftUI **Approve FaceID** button behavior with the FIDO2 hybrid security specification. The button now starts in a disabled **"Waiting for Proximity..."** state and only becomes active and displays **"Approve FaceID"** once the CoreBluetooth connection verifies that the physical device is nearby.
+
+---
+
+## 12. iOS System AutoFill Passkey Extension Configuration
+
+We have added the source files for a custom **iOS Credential Provider Extension** target to enable system-wide passkey autofill.
+
+### Components Added
+1.  **Swift Extension Handler ([CredentialProviderViewController.swift](file:///Users/gershwin/Documents/antigravity/adventurous-pasteur/mobile/ios/CredentialProviderExtension/CredentialProviderViewController.swift)):** Subclasses `ASCredentialProviderViewController` and implements system-level overrides to catch login triggers, search local UserDefaults/Keychain, validate via Face ID/Touch ID, and return signed passkey assertions to iOS.
+2.  **Configuration Properties ([Info.plist](file:///Users/gershwin/Documents/antigravity/adventurous-pasteur/mobile/ios/CredentialProviderExtension/Info.plist)):** Declares compatibility with `com.apple.authentication-services-credential-provider` and sets biometrics requirement constraints.
+
+### Sideloading and System Enablement Steps
+1.  In Xcode, link these files under a new target of type **Credential Provider Extension**.
+2.  Enable the **Associated Domains** capability in both main app and extension targets using `webcredentials:yourdomain.com`.
+3.  Publish a signed Apple-App-Site-Association (AASA) JSON file under: `https://yourdomain.com/.well-known/apple-app-site-association`.
+4.  Compile, sign, and install the application to your physical iPhone device.
+5.  On the iPhone, navigate to **Settings > Passwords > Password Options** (or **AutoFill Passwords & Passkeys**), locate **Passkey Authenticator Provider**, and toggle it **ON**.
+
