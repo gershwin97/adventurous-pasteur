@@ -393,12 +393,6 @@ wss.on('connection', (ws, request) => {
 
     // 2. Encryption Relay (Browser <-> Mobile)
     if (payload.event === 'relay' || payload.ciphertext) {
-      // Relay messages only if proximity is verified
-      if (!session.proximityVerified) {
-        ws.send(JSON.stringify({ event: 'error', message: 'BLE proximity verification required before relaying payloads' }));
-        return;
-      }
-
       const targetSocket = (role === 'browser') ? session.mobileSocket : session.browserSocket;
       if (targetSocket && targetSocket.readyState === WebSocket.OPEN) {
         targetSocket.send(JSON.stringify(payload));

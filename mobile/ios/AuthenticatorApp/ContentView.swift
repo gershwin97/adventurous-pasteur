@@ -21,9 +21,14 @@ struct ContentView: View {
     @State private var port = ""
     @State private var ceremonyType = "login"
     
+    
     // Decrypted FIDO options
     @State private var fidoChallenge = ""
     @State private var fidoRpId = "localhost"
+    
+    // Proximity states
+    @State private var isProximityVerified = false
+    @State private var verificationCode = "----"
     
     // Log feed for debugging
     @State private var logs: [String] = []
@@ -220,6 +225,25 @@ struct ContentView: View {
                 }
                 Divider().background(Color.white.opacity(0.08))
                 HStack {
+                    Text("Matching Code:")
+                        .foregroundColor(.gray)
+                    Spacer()
+                    Text(verificationCode)
+                        .font(.system(.body, design: .monospaced))
+                        .fontWeight(.bold)
+                        .foregroundColor(.green)
+                }
+                Divider().background(Color.white.opacity(0.08))
+                HStack {
+                    Text("BLE Proximity:")
+                        .foregroundColor(.gray)
+                    Spacer()
+                    Text(isProximityVerified ? "🟢 Verified Nearby" : "🔵 Scanning...")
+                        .fontWeight(.semibold)
+                        .foregroundColor(isProximityVerified ? .green : .blue)
+                }
+                Divider().background(Color.white.opacity(0.08))
+                HStack {
                     Text("User Account:")
                         .foregroundColor(.gray)
                     Spacer()
@@ -235,15 +259,6 @@ struct ContentView: View {
                     Text(fidoRpId)
                         .fontWeight(.semibold)
                         .foregroundColor(.green)
-                }
-                Divider().background(Color.white.opacity(0.08))
-                HStack {
-                    Text("Browser OS:")
-                        .foregroundColor(.gray)
-                    Spacer()
-                    Text("macOS (Safari)")
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
                 }
                 Divider().background(Color.white.opacity(0.08))
                 HStack {
@@ -277,14 +292,15 @@ struct ContentView: View {
                 }
                 
                 Button(action: triggerFaceIDAuthentication) {
-                    Text("Approve FaceID")
+                    Text(isProximityVerified ? "Approve FaceID" : "Waiting for BLE Proximity...")
                         .fontWeight(.bold)
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .background(Color.green)
-                        .foregroundColor(.white)
+                        .background(isProximityVerified ? Color.green : Color.white.opacity(0.1))
+                        .foregroundColor(isProximityVerified ? .white : .gray)
                         .cornerRadius(12)
                 }
+                .disabled(!isProximityVerified)
             }
         }
     }
@@ -381,6 +397,14 @@ struct ContentView: View {
             hostIp = url.host ?? "localhost"
             port = url.port != nil ? String(url.port!) : "3000"
             
+            // Calculate verificationCode from psk
+            if let pskInt = UInt32(psk.prefix(8), radix: 16) {
+                let codeVal = pskInt % 10000
+                verificationCode = String(format: "%04d", codeVal)
+            } else {
+                verificationCode = "----"
+            }
+            isProximityVerified = false
             errorMessage = ""
             log("Connecting to session: \(sessionId)", type: "[Tunnel]")
             
@@ -414,6 +438,14 @@ struct ContentView: View {
                 return
             }
             
+            // Calculate verificationCode from psk
+            if let pskInt = UInt32(psk.prefix(8), radix: 16) {
+                let codeVal = pskInt % 10000
+                verificationCode = String(format: "%04d", codeVal)
+            } else {
+                verificationCode = "----"
+            }
+            isProximityVerified = false
             errorMessage = ""
             log("Connecting to session: \(sessionId)", type: "[Tunnel]")
             
@@ -469,6 +501,7 @@ struct ContentView: View {
         // Check for proximity-verified event
         if let event = json["event"] as? String, event == "proximity-verified" {
             log("BLE proximity verified by browser. Tunnel unlocked.", type: "[Proximity]")
+            isProximityVerified = true
         }
 
         // Check for encrypted WebAuthn options
@@ -780,6 +813,8 @@ struct ContentView: View {
         psk = ""
         manualToken = ""
         errorMessage = ""
+        isProximityVerified = false
+        verificationCode = "----"
         currentScreen = .connect
     }
 

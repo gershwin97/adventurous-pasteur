@@ -120,6 +120,13 @@ document.addEventListener('DOMContentLoaded', () => {
     activePsk = generateRandomHex(32);
     activeTokenHash = await calculateTokenHash(activeSessionId, activePsk);
 
+    // Derive 4-digit numeric verification code synchronously from activePsk
+    const verificationCode = String(parseInt(activePsk.substring(0, 8), 16) % 10000).padStart(4, '0');
+    const verificationCodeEl = document.getElementById('verification-code');
+    if (verificationCodeEl) {
+      verificationCodeEl.textContent = verificationCode;
+    }
+
     // 2. Generate Bypass Session Token (SessionID:PSK:HostIP:Port)
     const hostIp = serverConfig ? serverConfig.localIp : window.location.hostname;
     const port = serverConfig ? serverConfig.port : window.location.port;
@@ -181,9 +188,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setStatusDot(statusProximity, 'green');
         proximityText.textContent = msg.simulated ? 'Proximity Mocked' : `Proximity Verified (${msg.rssi} dBm)`;
         logConsole('Proximity', msg.simulated ? 'BLE Proximity verification mocked (Simulator Bypass).' : `BLE Proximity verified! RSSI: ${msg.rssi} dBm. Device is nearby.`, 'success');
-        
-        // Encrypt and send FIDO options now that proximity check has unlocked the tunnel
-        encryptAndSendFidoOptions(username);
       }
 
       // Proximity Error/Timeout
@@ -204,6 +208,8 @@ document.addEventListener('DOMContentLoaded', () => {
         setStatusDot(statusMobile, msg.mobileConnected ? 'green' : 'red');
         if (msg.mobileConnected) {
           logConsole('Tunnel', 'Mobile client connected to WebSocket tunnel.', 'system');
+          // Encrypt and send FIDO options immediately so mobile can show approval screen
+          encryptAndSendFidoOptions(username);
         } else {
           logConsole('Tunnel', 'Mobile client disconnected.', 'warning');
         }

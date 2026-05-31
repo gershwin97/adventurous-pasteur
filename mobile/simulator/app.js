@@ -26,6 +26,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const metaIp = document.getElementById('meta-ip');
   const metaUser = document.getElementById('meta-user');
   
+  const metaSession = document.getElementById('meta-session');
+  const metaMatchingCode = document.getElementById('meta-matching-code');
+  const metaProximityStatus = document.getElementById('meta-proximity-status');
+  
   const faceidPrompt = document.getElementById('faceid-prompt');
   const appLogs = document.getElementById('app-logs');
 
@@ -40,6 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let videoStream = null;
   let scanInterval = null;
   let fidoOptions = null; // The decrypted challenge options from browser
+  let isProximityVerified = false;
 
   // Setup fallback event listeners
   btnConnectToken.addEventListener('click', () => {
@@ -166,14 +171,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // Connect to tunnel with simulator parameters
     const tunnelUrl = `${wsProtocol}://${activeHostIp}:${activePort}/tunnel/${activeSessionId}?role=mobile&device-type=simulator&simulate=${isMockBle}`;
     
+    isProximityVerified = false;
     ws = new WebSocket(tunnelUrl);
-
+ 
     ws.onopen = () => {
       logAppConsole('Tunnel', 'Connected to WebSocket signaling server.', 'system');
       processingTitle.textContent = 'Verifying Proximity...';
       processingMsg.textContent = 'Performing BLE RSSI check with browser...';
     };
-
+ 
     ws.onmessage = async (event) => {
       let msg;
       try {
@@ -181,13 +187,15 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (e) {
         return;
       }
-
+ 
       // Proximity verified
       if (msg.event === 'proximity-verified') {
         logAppConsole('Proximity', 'Proximity confirmed. Tunnel unlocked.', 'success');
+        isProximityVerified = true;
+        updateProximityStatusInUI();
         processingMsg.textContent = 'Waiting for cryptographic options...';
       }
-
+ 
       // Relay payload (Received FIDO options from browser)
       if (msg.event === 'relay' || msg.ciphertext) {
         logAppConsole('Crypto', 'Received encrypted WebAuthn options. Decrypting...', 'crypto');
@@ -214,13 +222,33 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
+  function updateProximityStatusInUI() {
+    if (isProximityVerified) {
+      metaProximityStatus.textContent = '🟢 Verified Nearby';
+      metaProximityStatus.style.color = '#2ecc71';
+      btnApprove.disabled = false;
+      btnApprove.textContent = ceremonyType === 'registration' ? 'Register Passkey' : 'Approve with FaceID';
+      btnApprove.style.backgroundColor = '#2ecc71';
+      btnApprove.style.cursor = 'pointer';
+      btnApprove.style.color = '#ffffff';
+    } else {
+      metaProximityStatus.textContent = '🔵 Scanning...';
+      metaProximityStatus.style.color = '#3498db';
+      btnApprove.disabled = true;
+      btnApprove.textContent = 'Waiting for BLE Proximity...';
+      btnApprove.style.backgroundColor = '#34495e';
+      btnApprove.style.cursor = 'not-allowed';
+      btnApprove.style.color = '#7f8c8d';
+    }
+  }
+
   function showApprovalDialog() {
     // Determine ceremony type based on fidoOptions parameters
     const isReg = fidoOptions.rp && fidoOptions.user;
     ceremonyType = isReg ? 'registration' : 'login';
     
     username = isReg ? fidoOptions.user.name : (fidoOptions.allowCredentials ? 'alice' : 'Unknown');
-
+ 
     // Bind metadata details
     metaOrigin.textContent = fidoOptions.rpId || 'localhost';
     metaUser.textContent = username;
@@ -228,7 +256,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Fetch mock metadata for visual interest (relayed IP address/agent)
     metaOs.textContent = navigator.platform.includes('Mac') ? 'macOS (Safari)' : 'Windows (Chrome)';
     metaIp.textContent = activeHostIp === 'localhost' ? '127.0.0.1' : activeHostIp;
-
+ 
+    metaSession.textContent = activeSessionId ? activeSessionId.substring(0, 8) + '...' : '----';
+    // Calculate matching code
+    const matchingCode = String(parseInt(activePsk.substring(0, 8), 16) % 10000).padStart(4, '0');
+    metaMatchingCode.textContent = matchingCode;
+ 
+    updateProximityStatusInUI();
     showScreen(approveScreen);
   }
 
