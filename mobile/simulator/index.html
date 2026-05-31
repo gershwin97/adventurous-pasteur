@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FIDO Mobile Authenticator Simulator</title>
+  <!-- Load jsQR library from CDN to support camera QR Code scanning in PWA -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="notch"></div>
+  
+  <div class="iphone-container">
+    <header class="app-header">
+      <div class="carrier">LTE</div>
+      <div class="battery">98%</div>
+    </header>
+
+    <main class="app-body">
+      <!-- 1. Connection Panel -->
+      <section id="connect-screen" class="screen">
+        <div class="app-logo-wrapper">
+          <div class="key-icon">🔑</div>
+          <h2>Passkey Auth</h2>
+          <p>FIDO CTAP2.1 Authenticator</p>
+        </div>
+
+        <div class="manual-entry">
+          <h3>Connect to Session</h3>
+          <p class="helper-text">Enter the Session Token displayed under the browser QR Code</p>
+          <div class="input-group">
+            <textarea id="token-input" placeholder="SessionID:PSK:HostIP:Port..." rows="3"></textarea>
+          </div>
+          <button id="btn-connect-token" class="btn btn-primary">Connect via Token</button>
+        </div>
+
+        <div class="divider"><span>OR</span></div>
+
+        <div class="camera-scan-wrapper">
+          <button id="btn-start-scan" class="btn btn-secondary">Scan QR Code via Camera</button>
+          <div id="video-container" class="hidden">
+            <video id="video-preview" playsinline></video>
+            <canvas id="video-canvas" class="hidden"></canvas>
+            <div class="scan-overlay">
+              <div class="scan-target"></div>
+            </div>
+            <button id="btn-stop-scan" class="btn btn-danger btn-sm">Stop Camera</button>
+          </div>
+        </div>
+
+        <div id="connect-error" class="error-banner hidden"></div>
+      </section>
+
+      <!-- 2. Processing / BLE Proximity Status -->
+      <section id="processing-screen" class="screen hidden">
+        <div class="spinner-wrapper">
+          <div class="spinner"></div>
+          <div class="ble-signal-ring"></div>
+        </div>
+        <h2 id="processing-title">Connecting to Browser...</h2>
+        <p class="status-msg" id="processing-msg">Establishing secure tunnel...</p>
+        
+        <div class="mock-ble-settings">
+          <label class="switch-container">
+            <input type="checkbox" id="mock-ble-toggle" checked>
+            <span class="switch-slider"></span>
+            <span class="switch-label">Simulate BLE Advertisement</span>
+          </label>
+          <p class="helper-text">Sends mock proximity packet if phone is running inside a browser tab or simulator without BLE hardware.</p>
+        </div>
+      </section>
+
+      <!-- 3. FaceID / TouchID Biometric Authorization Dialog -->
+      <section id="approve-screen" class="screen hidden">
+        <div class="biometric-icon-wrapper">
+          <div class="faceid-scan-indicator"></div>
+        </div>
+        <h2>Approve Login?</h2>
+        <p class="subtitle">A computer is requesting access to your registered credentials</p>
+
+        <div class="device-meta-card">
+          <div class="meta-row">
+            <span class="meta-label">Request Origin:</span>
+            <span class="meta-val highlight" id="meta-origin">localhost</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">Browser OS:</span>
+            <span class="meta-val" id="meta-os">macOS</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">Browser IP:</span>
+            <span class="meta-val" id="meta-ip">127.0.0.1</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">User Account:</span>
+            <span class="meta-val" id="meta-user">alice</span>
+          </div>
+        </div>
+
+        <div class="biometric-overlay hidden" id="faceid-prompt">
+          <div class="faceid-card">
+            <div class="faceid-spinner"></div>
+            <div class="faceid-face"></div>
+            <p>FaceID Verification</p>
+          </div>
+        </div>
+
+        <div class="button-group">
+          <button id="btn-reject" class="btn btn-secondary">Deny Request</button>
+          <button id="btn-approve" class="btn btn-primary">Approve with FaceID</button>
+        </div>
+      </section>
+
+      <!-- 4. Success state Screen -->
+      <section id="success-screen" class="screen hidden">
+        <div class="success-indicator">
+          <div class="circle-check">✓</div>
+        </div>
+        <h2>Authentication Complete</h2>
+        <p class="subtitle">The browser is now logged in. You can close this screen.</p>
+        <button id="btn-done" class="btn btn-secondary">Done</button>
+      </section>
+    </main>
+
+    <!-- Mini Debug Log console on Mobile App -->
+    <footer class="app-footer-console">
+      <div id="app-logs" class="app-logs"></div>
+    </footer>
+  </div>
+</body>
+</html>

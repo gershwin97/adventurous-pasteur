@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FIDO Passkey RP Portal</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Load QRCode library from CDN to render dynamic QR Codes -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+</head>
+<body>
+  <div class="glass-bg"></div>
+  
+  <main class="container">
+    <!-- Login & Registration Card -->
+    <section id="auth-panel" class="card">
+      <header class="card-header">
+        <h1 class="logo">FIDO2<span>Passkey</span></h1>
+        <p class="subtitle">Secure Passwordless Authentication Proof of Concept</p>
+      </header>
+
+      <div class="form-group">
+        <label for="username">Username</label>
+        <div class="input-wrapper">
+          <input type="text" id="username" placeholder="e.g. alice, bob" autocomplete="username">
+          <span class="focus-border"></span>
+        </div>
+      </div>
+
+      <div class="button-group">
+        <button id="btn-register" class="btn btn-secondary">Register Passkey</button>
+        <button id="btn-login" class="btn btn-primary">Login with Passkey</button>
+      </div>
+      
+      <div id="auth-error" class="error-text hidden"></div>
+    </section>
+
+    <!-- Active Authentication Ceremony Modal -->
+    <section id="ceremony-panel" class="card hidden">
+      <header class="card-header">
+        <h2 id="ceremony-title">Connecting Authenticator...</h2>
+        <p class="subtitle">Please scan the QR code using your mobile app</p>
+      </header>
+
+      <div class="qr-container">
+        <canvas id="qr-canvas"></canvas>
+        <div id="qr-loading" class="qr-loading">Generating secure session...</div>
+      </div>
+
+      <div class="bypass-container">
+        <span class="bypass-label">Simulator Token Bypass:</span>
+        <div class="bypass-code-wrapper">
+          <code id="bypass-token">Generating...</code>
+          <button id="btn-copy-token" class="btn-copy" title="Copy Token">Copy</button>
+        </div>
+      </div>
+
+      <!-- Peer and BLE connection status indicators -->
+      <div class="status-grid">
+        <div class="status-item">
+          <span class="status-dot red" id="status-browser"></span>
+          <span class="status-label">Browser Client</span>
+        </div>
+        <div class="status-item">
+          <span class="status-dot red" id="status-mobile"></span>
+          <span class="status-label">Mobile Client</span>
+        </div>
+        <div class="status-item">
+          <span class="status-dot red" id="status-proximity"></span>
+          <span class="status-label" id="proximity-text">BLE Proximity</span>
+        </div>
+      </div>
+
+      <!-- Live Log Console -->
+      <div class="console-wrapper">
+        <div class="console-header">
+          <span>Signaling & Cryptographic Log</span>
+          <span class="console-pulse"></span>
+        </div>
+        <div id="console-logs" class="console-logs"></div>
+      </div>
+
+      <div class="actions">
+        <button id="btn-cancel" class="btn btn-danger">Cancel Ceremony</button>
+      </div>
+    </section>
+
+    <!-- Post-Login Welcome Dashboard -->
+    <section id="dashboard-panel" class="card hidden">
+      <header class="card-header">
+        <div class="success-icon-wrapper">
+          <svg class="checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
+            <circle class="checkmark__circle" cx="26" cy="26" r="25" fill="none"/>
+            <path class="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
+          </svg>
+        </div>
+        <h1 class="logo">Welcome back, <span id="user-display">User</span>!</h1>
+        <p class="subtitle">You have successfully authenticated using FIDO2 / CTAP2.1 Hybrid Proximity</p>
+      </header>
+
+      <div class="dashboard-details">
+        <h3>Cryptographic Evidence</h3>
+        <div class="detail-row">
+          <span class="detail-label">Verification Type:</span>
+          <span class="detail-val highlight">Asymmetric Keypair (ECDSA ES256)</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">BLE Proximity:</span>
+          <span class="detail-val text-success">Verified (RSSI Signal >= -75 dBm)</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Transport Channel:</span>
+          <span class="detail-val">WebSocket (E2E Encrypted AES-256-GCM)</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Relying Party:</span>
+          <span class="detail-val" id="rp-display">localhost</span>
+        </div>
+      </div>
+
+      <button id="btn-logout" class="btn btn-secondary">Logout</button>
+    </section>
+  </main>
+</body>
+</html>

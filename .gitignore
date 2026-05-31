@@ -1,0 +1,7 @@
+node_modules/
+poc-stuck-backend/node_modules/
+poc-stuck-backend/ble_scanner
+poc-stuck-backend/db.json
+.DS_Store
+.env
+poc-stuck-backend/.env
