@@ -5,10 +5,7 @@ class BLEAdvertiser: NSObject, CBPeripheralManagerDelegate {
     static let shared = BLEAdvertiser()
     private var peripheralManager: CBPeripheralManager?
     private var fidoService: CBMutableService?
-    
-    private let fidoServiceUUID = CBUUID(string: "FFFD")
-    private var activeServiceData: Data?
-    
+    private var activeTokenHashHex: String?
     private var isAdvertising = false
 
     private override init() {
@@ -17,10 +14,9 @@ class BLEAdvertiser: NSObject, CBPeripheralManagerDelegate {
         self.peripheralManager = CBPeripheralManager(delegate: self, queue: nil)
     }
 
-    // Convert hex SessionTokenHash to bytes and start BLE advertising
+    // Start BLE advertising using token hash
     func startAdvertising(tokenHashHex: String) {
-        guard let data = hexToData(hex: tokenHashHex) else { return }
-        self.activeServiceData = data
+        self.activeTokenHashHex = tokenHashHex
         self.isAdvertising = true
         
         triggerAdvertisingIfPoweredOn()
@@ -35,7 +31,7 @@ class BLEAdvertiser: NSObject, CBPeripheralManagerDelegate {
     }
 
     private func triggerAdvertisingIfPoweredOn() {
-        guard let manager = peripheralManager, manager.state == .poweredOn, isAdvertising, let serviceData = activeServiceData else {
+        guard let manager = peripheralManager, manager.state == .poweredOn, isAdvertising, let tokenHashHex = activeTokenHashHex else {
             return
         }
         
@@ -43,19 +39,24 @@ class BLEAdvertiser: NSObject, CBPeripheralManagerDelegate {
             manager.stopAdvertising()
         }
 
-        // Configure standard FIDO service
-        let service = CBMutableService(type: fidoServiceUUID, primary: true)
+        // Derive unique 128-bit UUID from token hash to avoid CBAdvertisementDataServiceDataKey iOS limitations
+        guard let customUUID = deriveCBUUID(from: tokenHashHex) else {
+            print("[BLE] Error: Failed to derive UUID from token hash: \(tokenHashHex)")
+            return
+        }
+
+        // Configure custom FIDO service with the derived UUID
+        let service = CBMutableService(type: customUUID, primary: true)
         self.fidoService = service
         manager.add(service)
         
-        // Broadcast Service UUID and include session hash in Service Data
+        // Broadcast custom Service UUID (fully supported on iOS peripherals)
         let advertisementData: [String: Any] = [
-            CBAdvertisementDataServiceUUIDsKey: [fidoServiceUUID],
-            CBAdvertisementDataServiceDataKey: [fidoServiceUUID: serviceData]
+            CBAdvertisementDataServiceUUIDsKey: [customUUID]
         ]
         
         manager.startAdvertising(advertisementData)
-        print("[BLE] Started advertising FIDO service (UUID: FFFD) with token: \(serviceData.map { String(format: "%02hhx", $0) }.joined())")
+        print("[BLE] Started advertising custom FIDO service (UUID: \(customUUID.uuidString)) for token: \(tokenHashHex)")
     }
 
     // CBPeripheralManagerDelegate handlers
@@ -82,17 +83,24 @@ class BLEAdvertiser: NSObject, CBPeripheralManagerDelegate {
         }
     }
 
-    // Helper: Convert Hex String to Data bytes
-    private func hexToData(hex: String) -> Data? {
-        var data = Data(capacity: hex.count / 2)
-        let regex = try! NSRegularExpression(pattern: "[0-9a-fA-F]{2}", options: [])
-        let range = NSRange(location: 0, length: hex.utf16.count)
-        regex.enumerateMatches(in: hex, options: [], range: range) { match, _, _ in
-            let byteString = (hex as NSString).substring(with: match!.range)
-            var num = UInt8(byteString, radix: 16)!
-            data.append(&num, count: 1)
-        }
-        guard data.count > 0 else { return nil }
-        return data
+    // Helper: Derive a 128-bit UUID (CBUUID) deterministically from the session token hash hex string (first 32 characters)
+    private func deriveCBUUID(from tokenHashHex: String) -> CBUUID? {
+        let hex = tokenHashHex.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard hex.count >= 32 else { return nil }
+        
+        let index0 = hex.index(hex.startIndex, offsetBy: 8)
+        let index1 = hex.index(index0, offsetBy: 4)
+        let index2 = hex.index(index1, offsetBy: 4)
+        let index3 = hex.index(index2, offsetBy: 4)
+        let index4 = hex.index(index3, offsetBy: 12)
+        
+        let part1 = String(hex[..<index0])
+        let part2 = String(hex[index0..<index1])
+        let part3 = String(hex[index1..<index2])
+        let part4 = String(hex[index2..<index3])
+        let part5 = String(hex[index3..<index4])
+        
+        let uuidString = "\(part1)-\(part2)-\(part3)-\(part4)-\(part5)"
+        return CBUUID(string: uuidString)
     }
 }

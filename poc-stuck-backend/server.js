@@ -105,17 +105,21 @@ function getAllowedOriginsAndRpIds(req) {
 // Config route to determine server local network IP address dynamically
 app.get('/api/config', (req, res) => {
   const networkInterfaces = require('os').networkInterfaces();
-  let localIp = 'localhost';
+  const ipAddresses = [];
+  
   for (const interfaceName in networkInterfaces) {
     const interfaces = networkInterfaces[interfaceName];
     for (const iface of interfaces) {
       if (iface.family === 'IPv4' && !iface.internal) {
-        localIp = iface.address;
-        break;
+        ipAddresses.push({
+          address: iface.address,
+          name: interfaceName
+        });
       }
     }
   }
-  res.json({ localIp, port: process.env.PORT || 3000 });
+  
+  res.json({ ipAddresses, port: process.env.PORT || 3000 });
 });
 
 // --- FIDO2 WebAuthn Rest Endpoints ---
@@ -234,6 +238,7 @@ app.get('/api/auth/login-options', async (req, res) => {
 
 // 4. Verify Assertion Signature
 app.post('/api/auth/verify-assertion', async (req, res) => {
+  console.log('[HTTP] Assertion request body:', JSON.stringify(req.body, null, 2));
   const { username, assertion } = req.body;
   if (!username || !assertion) {
     return res.status(400).json({ error: 'Missing username or assertion response' });
@@ -342,6 +347,12 @@ wss.on('connection', (ws, request) => {
     session.browserSocket = ws;
   } else if (role === 'mobile') {
     session.mobileSocket = ws;
+    
+    // If the browser already initiated scanning, trigger/re-trigger scanner now that mobile is active
+    if (session.expectedTokenHash && !session.proximityVerified) {
+      console.log(`[Proximity] Mobile client connected. Restarting BLE scanner for token: ${session.expectedTokenHash}`);
+      startPhysicalBleScanner(sessionId, session.expectedTokenHash);
+    }
   }
 
   // Notify peer if both are connected

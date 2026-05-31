@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSCameraUsageDescription</key>
+	<string>This app requires camera access to scan QR codes for device pairing and authentication.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>This app requires Bluetooth access to perform proximity verification for secure passkey authentication.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>This app requires Bluetooth access to perform proximity verification for secure passkey authentication.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>This app requires local network access to communicate with the local pairing and authentication server.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>This app requires Face ID access to authenticate biometric approval prompts securely.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+</dict>
+</plist>

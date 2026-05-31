@@ -187,8 +187,8 @@ document.addEventListener('DOMContentLoaded', () => {
  
     ws.onopen = () => {
       logAppConsole('Tunnel', 'Connected to WebSocket signaling server.', 'system');
-      processingTitle.textContent = 'Verifying Proximity...';
-      processingMsg.textContent = 'Performing BLE RSSI check with browser...';
+      processingTitle.textContent = 'Connecting...';
+      processingMsg.textContent = 'Waiting for cryptographic options...';
     };
  
     ws.onmessage = async (event) => {
@@ -234,22 +234,18 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updateProximityStatusInUI() {
+    btnApprove.disabled = false;
+    btnApprove.style.cursor = 'pointer';
+    btnApprove.style.color = '#ffffff';
+    btnApprove.style.backgroundColor = '#2ecc71';
+    btnApprove.textContent = ceremonyType === 'registration' ? 'Register Passkey' : 'Approve with FaceID';
+
     if (isProximityVerified) {
       metaProximityStatus.textContent = '🟢 Verified Nearby';
       metaProximityStatus.style.color = '#2ecc71';
-      btnApprove.disabled = false;
-      btnApprove.textContent = ceremonyType === 'registration' ? 'Register Passkey' : 'Approve with FaceID';
-      btnApprove.style.backgroundColor = '#2ecc71';
-      btnApprove.style.cursor = 'pointer';
-      btnApprove.style.color = '#ffffff';
     } else {
       metaProximityStatus.textContent = '🔵 Scanning...';
       metaProximityStatus.style.color = '#3498db';
-      btnApprove.disabled = true;
-      btnApprove.textContent = 'Waiting for BLE Proximity...';
-      btnApprove.style.backgroundColor = '#34495e';
-      btnApprove.style.cursor = 'not-allowed';
-      btnApprove.style.color = '#7f8c8d';
     }
   }
 
@@ -257,9 +253,41 @@ document.addEventListener('DOMContentLoaded', () => {
     // Determine ceremony type based on fidoOptions parameters
     const isReg = fidoOptions.rp && fidoOptions.user;
     ceremonyType = isReg ? 'registration' : 'login';
-    
-    // Use the parsed username from the token as fallback if it's a login ceremony
-    username = isReg ? fidoOptions.user.name : (username || 'alice');
+
+    let foundCred = null;
+    if (isReg) {
+      username = fidoOptions.user.name;
+    } else {
+      // Look up if we have a matching credential in our storage
+      if (fidoOptions.allowCredentials && fidoOptions.allowCredentials.length > 0) {
+        for (const cred of fidoOptions.allowCredentials) {
+          const stored = localStorage.getItem(`passkey_cred_${cred.id}`);
+          if (stored) {
+            foundCred = JSON.parse(stored);
+            break;
+          }
+        }
+      }
+      
+      // Fallback to legacy username-based lookup
+      if (!foundCred) {
+        const jwkPrivateStr = localStorage.getItem(`passkey_private_${username}`);
+        const keyId = localStorage.getItem(`passkey_id_${username}`);
+        if (jwkPrivateStr && keyId) {
+          foundCred = {
+            username: username,
+            privateKey: JSON.parse(jwkPrivateStr),
+            keyId: keyId
+          };
+        }
+      }
+      
+      if (foundCred) {
+        username = foundCred.username;
+      } else {
+        username = fidoOptions.username || username || 'alice';
+      }
+    }
  
     // Bind metadata details
     metaOrigin.textContent = fidoOptions.rpId || 'localhost';
@@ -274,7 +302,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const matchingCode = String(parseInt(activePsk.substring(0, 8), 16) % 10000).padStart(4, '0');
     metaMatchingCode.textContent = matchingCode;
  
-    updateProximityStatusInUI();
+    // Check if we have a valid key to sign
+    const hasKey = isReg || foundCred;
+    
+    if (!hasKey && ceremonyType === 'login') {
+      metaProximityStatus.textContent = '❌ No matching passkey found';
+      metaProximityStatus.style.color = '#e74c3c';
+      btnApprove.disabled = true;
+      btnApprove.textContent = 'No Passkey Found';
+      btnApprove.style.backgroundColor = '#c0392b';
+      btnApprove.style.cursor = 'not-allowed';
+      btnApprove.style.color = '#bdc3c7';
+    } else {
+      updateProximityStatusInUI();
+    }
+    
     showScreen(approveScreen);
   }
 
@@ -337,6 +379,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Save keypair locally in mock Keychain (localStorage)
     const keyId = generateRandomHex(16);
+    const credId = base64url(hexToBuf(keyId));
+    const credData = {
+      username: username,
+      privateKey: jwkPrivateKey,
+      publicKey: jwkPublicKey,
+      keyId: keyId
+    };
+    localStorage.setItem(`passkey_cred_${credId}`, JSON.stringify(credData));
     localStorage.setItem(`passkey_private_${username}`, JSON.stringify(jwkPrivateKey));
     localStorage.setItem(`passkey_public_${username}`, JSON.stringify(jwkPublicKey));
     localStorage.setItem(`passkey_id_${username}`, keyId);
@@ -357,7 +407,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // For simplicity, we construct a raw CBOR representation of attestationObject.
     // Instead of importing a heavy CBOR library, we build a helper that serializes a minimal P-256 key into COSE map
     const cosePublicKey = serializeJwkToCose(jwkPublicKey);
-    localStorage.setItem('passkey_counter', '1');
+    localStorage.setItem(`passkey_counter_${username}`, '1');
     const authData = buildAuthenticatorData(rpID, keyId, cosePublicKey, 1);
     
     // Attestation mapping: { "fmt": "none", "attStmt": {}, "authData": authData }
@@ -381,15 +431,39 @@ document.addEventListener('DOMContentLoaded', () => {
     const rpID = fidoOptions.rpId || 'localhost';
     const challenge = fidoOptions.challenge;
 
-    // 1. Retrieve Private Key from mock Keychain
-    const jwkPrivateStr = localStorage.getItem(`passkey_private_${username}`);
-    const keyId = localStorage.getItem(`passkey_id_${username}`);
-    
-    if (!jwkPrivateStr || !keyId) {
-      throw new Error(`No registered passkey found for user ${username}`);
+    // 1. Retrieve Private Key from mock Keychain by looking up the allowed credential ID first
+    let matchedCred = null;
+    if (fidoOptions.allowCredentials && fidoOptions.allowCredentials.length > 0) {
+      for (const cred of fidoOptions.allowCredentials) {
+        const stored = localStorage.getItem(`passkey_cred_${cred.id}`);
+        if (stored) {
+          matchedCred = JSON.parse(stored);
+          break;
+        }
+      }
     }
 
-    const jwkPrivate = JSON.parse(jwkPrivateStr);
+    // Fallback to legacy username-based lookup
+    if (!matchedCred) {
+      const jwkPrivateStr = localStorage.getItem(`passkey_private_${username}`);
+      const keyId = localStorage.getItem(`passkey_id_${username}`);
+      if (jwkPrivateStr && keyId) {
+        matchedCred = {
+          username: username,
+          privateKey: JSON.parse(jwkPrivateStr),
+          keyId: keyId
+        };
+      }
+    }
+
+    if (!matchedCred) {
+      throw new Error(`No registered passkey found for the requested credentials`);
+    }
+
+    // Ensure username is updated to match the credential used
+    username = matchedCred.username;
+    const jwkPrivate = matchedCred.privateKey;
+    const keyId = matchedCred.keyId;
     
     // Import private key back
     const privateKey = await window.crypto.subtle.importKey(
@@ -413,9 +487,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const clientDataJSON = base64url(clientDataJSONBytes);
 
     // 3. Construct Authenticator Data (37 bytes: 32-byte RP ID hash, 1-byte flag, 4-byte counter)
-    const savedCounter = parseInt(localStorage.getItem('passkey_counter') || '1', 10);
+    const savedCounterStr = localStorage.getItem(`passkey_counter_${username}`) || localStorage.getItem('passkey_counter') || '1';
+    const savedCounter = parseInt(savedCounterStr, 10);
     const nextCounter = savedCounter + 1;
-    localStorage.setItem('passkey_counter', nextCounter.toString());
+    localStorage.setItem(`passkey_counter_${username}`, nextCounter.toString());
     const authData = buildMockAuthDataForAssertion(rpID, nextCounter);
 
     // 4. Cryptographic Signature (ECDSA P-256 SHA-256)

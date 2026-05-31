@@ -25,6 +25,8 @@ struct ContentView: View {
     // Decrypted FIDO options
     @State private var fidoChallenge = ""
     @State private var fidoRpId = "localhost"
+    @State private var activePrivateKeyData: Data? = nil
+    @State private var activeKeyIdHex = ""
     
     // Proximity states
     @State private var isProximityVerified = false
@@ -186,7 +188,7 @@ struct ContentView: View {
                 Text("Session ID: \(String(sessionId.prefix(8)))...")
                     .font(.system(.caption, design: .monospaced))
                     .foregroundColor(.green)
-                Text("Performing BLE proximity scanning...")
+                Text("Connecting to signaling server...")
                     .font(.subheadline)
                     .foregroundColor(.gray)
             }
@@ -269,6 +271,17 @@ struct ContentView: View {
                         .fontWeight(.semibold)
                         .foregroundColor(.white)
                 }
+                if activePrivateKeyData == nil && ceremonyType == "login" {
+                    Divider().background(Color.white.opacity(0.08))
+                    HStack {
+                        Text("Error:")
+                            .foregroundColor(.red)
+                        Spacer()
+                        Text("No matching passkey found")
+                            .fontWeight(.semibold)
+                            .foregroundColor(.red)
+                    }
+                }
             }
             .padding()
             .background(Color.white.opacity(0.02))
@@ -292,15 +305,33 @@ struct ContentView: View {
                 }
                 
                 Button(action: triggerFaceIDAuthentication) {
-                    Text(isProximityVerified ? "Approve FaceID" : "Waiting for BLE Proximity...")
-                        .fontWeight(.bold)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(isProximityVerified ? Color.green : Color.white.opacity(0.1))
-                        .foregroundColor(isProximityVerified ? .white : .gray)
-                        .cornerRadius(12)
+                    if !isProximityVerified {
+                        Text("Waiting for Proximity...")
+                            .fontWeight(.bold)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.gray.opacity(0.3))
+                            .foregroundColor(.gray)
+                            .cornerRadius(12)
+                    } else if activePrivateKeyData == nil && ceremonyType == "login" {
+                        Text("No Passkey Found")
+                            .fontWeight(.bold)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.red.opacity(0.3))
+                            .foregroundColor(.gray)
+                            .cornerRadius(12)
+                    } else {
+                        Text("Approve FaceID")
+                            .fontWeight(.bold)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.green)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                    }
                 }
-                .disabled(!isProximityVerified)
+                .disabled(!isProximityVerified || (activePrivateKeyData == nil && ceremonyType == "login"))
             }
         }
     }
@@ -373,6 +404,7 @@ struct ContentView: View {
     // --- Parser & WS Initiator ---
 
     private func parseAndConnect(_ data: String) {
+        guard currentScreen == .connect else { return }
         let trimmedData = data.trimmingCharacters(in: .whitespacesAndNewlines)
         
         if trimmedData.hasPrefix("{") {
@@ -529,6 +561,9 @@ struct ContentView: View {
                 fidoChallenge = options["challenge"] as? String ?? ""
                 fidoRpId = options["rpId"] as? String ?? (options["rp"] as? [String: Any])?["id"] as? String ?? "localhost"
                 
+                activePrivateKeyData = nil
+                activeKeyIdHex = ""
+                
                 // Dynamically detect ceremony type
                 if options["user"] != nil && options["rp"] != nil {
                     ceremonyType = "registration"
@@ -538,11 +573,44 @@ struct ContentView: View {
                     }
                 } else {
                     ceremonyType = "login"
-                    // Load username from local authenticator storage if available
-                    if let storedUsername = UserDefaults.standard.string(forKey: "passkey_username") {
-                        username = storedUsername
-                    } else if let optUsername = options["username"] as? String {
-                        username = optUsername
+                    var foundMatchingCred = false
+                    if let allowCredentials = options["allowCredentials"] as? [[String: Any]] {
+                        for cred in allowCredentials {
+                            if let credId = cred["id"] as? String,
+                               let storedCred = UserDefaults.standard.dictionary(forKey: "passkey_cred_\(credId)") {
+                                if let storedUsername = storedCred["username"] as? String,
+                                   let privateKeyB64 = storedCred["privateKey"] as? String,
+                                   let privateKeyData = Data(base64Encoded: privateKeyB64),
+                                   let keyIdHex = storedCred["keyId"] as? String {
+                                    username = storedUsername
+                                    activePrivateKeyData = privateKeyData
+                                    activeKeyIdHex = keyIdHex
+                                    foundMatchingCred = true
+                                    break
+                                }
+                            }
+                        }
+                    }
+                    
+                    if !foundMatchingCred {
+                        // Fallback to legacy single key stored in UserDefaults only if it matches the requested username
+                        if let storedUsername = UserDefaults.standard.string(forKey: "passkey_username"),
+                           let privateKeyData = UserDefaults.standard.data(forKey: "passkey_private") {
+                            
+                            let optUsername = options["username"] as? String
+                            if optUsername == nil || storedUsername == optUsername {
+                                username = storedUsername
+                                activePrivateKeyData = privateKeyData
+                                if let publicKeyData = UserDefaults.standard.data(forKey: "passkey_public") {
+                                    let publicKeyHex = publicKeyData.map { String(format: "%02hhx", $0) }.joined()
+                                    activeKeyIdHex = String(publicKeyHex.prefix(16)).lowercased()
+                                } else {
+                                    activeKeyIdHex = "mock-keyid-hex"
+                                }
+                            }
+                        } else if let optUsername = options["username"] as? String {
+                            username = optUsername
+                        }
                     }
                 }
                 
@@ -598,14 +666,8 @@ struct ContentView: View {
                 keyIdHex = "mock-keyid-hex"
             }
         } else {
-            // Load existing public key to derive the credential ID (keyIdHex)
-            if let publicKeyData = UserDefaults.standard.data(forKey: "passkey_public") {
-                let publicKeyHex = publicKeyData.map { String(format: "%02hhx", $0) }.joined()
-                keyIdHex = String(publicKeyHex.prefix(16)).lowercased()
-            } else {
-                // Fallback if no key exists
-                keyIdHex = "mock-keyid-hex"
-            }
+            // Use activeKeyIdHex from lookup
+            keyIdHex = activeKeyIdHex.isEmpty ? "mock-keyid-hex" : activeKeyIdHex
         }
         
         let keyId = Data(keyIdHex.utf8)
@@ -613,14 +675,18 @@ struct ContentView: View {
 
         // Monotonic Signature Counter logic
         let counter: UInt32
+        let counterKey = "passkey_counter_\(username)"
         if ceremonyType == "registration" {
-            UserDefaults.standard.set(1, forKey: "passkey_counter")
+            UserDefaults.standard.set(1, forKey: counterKey)
             counter = 1
             log("Registering passkey. Signature counter reset to 1.", type: "[Crypto]")
         } else {
-            let savedCounter = UserDefaults.standard.integer(forKey: "passkey_counter")
+            var savedCounter = UserDefaults.standard.integer(forKey: counterKey)
+            if savedCounter == 0 {
+                savedCounter = UserDefaults.standard.integer(forKey: "passkey_counter")
+            }
             let nextCounter = (savedCounter == 0 ? 1 : savedCounter) + 1
-            UserDefaults.standard.set(nextCounter, forKey: "passkey_counter")
+            UserDefaults.standard.set(nextCounter, forKey: counterKey)
             counter = UInt32(nextCounter)
             log("Authenticating. Incrementing signature counter to \(counter).", type: "[Crypto]")
         }
@@ -633,8 +699,7 @@ struct ContentView: View {
             "crossOrigin": false
         ]
         
-        guard let clientDataJSONData = try? JSONSerialization.data(withJSONObject: clientDataJSONObj),
-              let clientDataJSONStr = String(data: clientDataJSONData, encoding: .utf8) else {
+        guard let clientDataJSONData = try? JSONSerialization.data(withJSONObject: clientDataJSONObj) else {
             return
         }
         let clientDataJSONB64Url = base64UrlEncode(clientDataJSONData)
@@ -669,7 +734,12 @@ struct ContentView: View {
             signatureInput.append(authData)
             signatureInput.append(Data(clientDataHash))
             
-            let signature = cryptoManager.sign(challengeData: signatureInput, username: username) ?? Data(repeating: 0, count: 64)
+            let signature: Data
+            if let pKeyData = activePrivateKeyData {
+                signature = cryptoManager.sign(challengeData: signatureInput, privateKeyData: pKeyData) ?? Data(repeating: 0, count: 64)
+            } else {
+                signature = cryptoManager.sign(challengeData: signatureInput, username: username) ?? Data(repeating: 0, count: 64)
+            }
             
             responseObj = [
                 "id": keyIdB64Url,

@@ -32,16 +32,126 @@ document.addEventListener('DOMContentLoaded', () => {
   let ceremonyType = null; // 'registration' or 'login'
   let pendingFidoOptions = null; // Saved options to encrypt and send after BLE check
 
+  // Check for Secure Context / Crypto API Availability
+  const secureWarning = document.getElementById('secure-context-warning');
+  const isSecureContext = window.crypto && window.crypto.subtle;
+  if (!isSecureContext) {
+    if (secureWarning) {
+      secureWarning.classList.remove('hidden');
+      
+      // Dynamically set current URL/port suggestions
+      const port = window.location.port || '3000';
+      const bypassCode = document.getElementById('current-origin-bypass');
+      if (bypassCode) {
+        bypassCode.textContent = `http://${window.location.hostname}:${port}`;
+      }
+      const suggestedLink = document.getElementById('suggested-link');
+      if (suggestedLink) {
+        suggestedLink.href = `http://127.0.0.1:${port}`;
+        suggestedLink.textContent = `http://127.0.0.1:${port}`;
+      }
+    }
+    
+    // Disable action buttons
+    btnRegister.disabled = true;
+    btnLogin.disabled = true;
+    btnRegister.style.opacity = '0.5';
+    btnRegister.style.cursor = 'not-allowed';
+    btnLogin.style.opacity = '0.5';
+    btnLogin.style.cursor = 'not-allowed';
+  }
+
   // 1. Fetch server config on load
+  const ipSelect = document.getElementById('ip-select');
+
   fetch('/api/config')
     .then(res => res.json())
     .then(config => {
       serverConfig = config;
-      logConsole('Config', `Server IP resolved: ${config.localIp}:${config.port}`, 'system');
+      populateIpSelect(config);
+      
+      // Dynamically update the LAN IP suggestion in the warning banner
+      const detectedLanIp = document.getElementById('detected-lan-ip');
+      if (detectedLanIp && config.ipAddresses && config.ipAddresses.length > 0) {
+        const enIp = config.ipAddresses.find(ip => ip.name.startsWith('en')) || config.ipAddresses[0];
+        detectedLanIp.textContent = enIp.address;
+      }
     })
     .catch(err => {
       showError('Failed to fetch server IP configuration. Is backend running?');
     });
+
+  function populateIpSelect(config) {
+    ipSelect.innerHTML = '';
+    
+    // Add dynamically detected IPs from the server
+    if (config.ipAddresses && config.ipAddresses.length > 0) {
+      config.ipAddresses.forEach(ip => {
+        const option = document.createElement('option');
+        option.value = ip.address;
+        option.textContent = `${ip.address} (${ip.name})`;
+        ipSelect.appendChild(option);
+      });
+    }
+    
+    // Add localhost fallback
+    const localhostOption = document.createElement('option');
+    localhostOption.value = '127.0.0.1';
+    localhostOption.textContent = '127.0.0.1 (localhost)';
+    ipSelect.appendChild(localhostOption);
+    
+    // Determine default selected IP based on the browser's URL address
+    const currentHost = window.location.hostname;
+    let foundDefault = false;
+    for (let i = 0; i < ipSelect.options.length; i++) {
+      if (ipSelect.options[i].value === currentHost) {
+        ipSelect.selectedIndex = i;
+        foundDefault = true;
+        break;
+      }
+    }
+    
+    // Fallback: If current host is localhost/127.0.0.1 and we have a Wi-Fi or Ethernet IP, select it
+    if (!foundDefault && (currentHost === 'localhost' || currentHost === '127.0.0.1')) {
+      const enIndex = config.ipAddresses.findIndex(ip => ip.name.startsWith('en'));
+      if (enIndex !== -1) {
+        ipSelect.selectedIndex = enIndex;
+      } else if (config.ipAddresses.length > 0) {
+        ipSelect.selectedIndex = 0;
+      }
+    }
+
+    logConsole('Config', `Server connection IP selected: ${ipSelect.value}:${config.port}`, 'system');
+  }
+
+  function renderQrAndToken(username) {
+    const hostIp = ipSelect.value || window.location.hostname;
+    const port = serverConfig ? serverConfig.port : window.location.port;
+    
+    // 1. Generate Bypass Session Token (SessionID:PSK:HostIP:Port:Username:CeremonyType)
+    const bypassToken = `${activeSessionId}:${activePsk}:${hostIp}:${port}:${username}:${ceremonyType}`;
+    bypassTokenCode.textContent = bypassToken;
+
+    // 2. Render QR Code (Contains tunnel URL & PSK)
+    const tunnelUrl = `ws://${hostIp}:${port}/tunnel/${activeSessionId}`;
+    const qrPayload = JSON.stringify({
+      sessionId: activeSessionId,
+      psk: activePsk,
+      tunnelUrl: tunnelUrl,
+      username: username,
+      type: ceremonyType
+    });
+
+    const canvas = document.getElementById('qr-canvas');
+    QRCode.toCanvas(canvas, qrPayload, { width: 220, margin: 1 }, (err) => {
+      if (err) {
+        console.error(err);
+        logConsole('QR', 'Error generating QR code canvas', 'error');
+      } else {
+        document.getElementById('qr-loading').style.display = 'none';
+      }
+    });
+  }
 
   // --- Event Listeners ---
 
@@ -127,35 +237,17 @@ document.addEventListener('DOMContentLoaded', () => {
       verificationCodeEl.textContent = verificationCode;
     }
 
-    // 2. Generate Bypass Session Token (SessionID:PSK:HostIP:Port:Username:CeremonyType)
-    const hostIp = serverConfig ? serverConfig.localIp : window.location.hostname;
-    const port = serverConfig ? serverConfig.port : window.location.port;
-    const bypassToken = `${activeSessionId}:${activePsk}:${hostIp}:${port}:${username}:${ceremonyType}`;
-    bypassTokenCode.textContent = bypassToken;
+    // 2. Generate Bypass Session Token and QR Code dynamically based on selected IP
+    renderQrAndToken(username);
+
+    // Regenerate QR/token dynamically if user switches IP
+    ipSelect.onchange = () => {
+      renderQrAndToken(username);
+      logConsole('Config', `Regenerated QR code targeting IP: ${ipSelect.value}`, 'system');
+    };
 
     logConsole('Crypto', `Session initialized. SessionID: ${activeSessionId.substring(0,8)}...`, 'crypto');
     logConsole('Crypto', `Pre-Shared Key (PSK) generated client-side.`, 'crypto');
-
-    // 3. Render QR Code (Contains tunnel URL & PSK)
-    const tunnelUrl = `ws://${hostIp}:${port}/tunnel/${activeSessionId}`;
-    const qrPayload = JSON.stringify({
-      sessionId: activeSessionId,
-      psk: activePsk,
-      tunnelUrl: tunnelUrl,
-      username: username,
-      type: ceremonyType
-    });
-
-    const canvas = document.getElementById('qr-canvas');
-    QRCode.toCanvas(canvas, qrPayload, { width: 220, margin: 1 }, (err) => {
-      if (err) {
-        console.error(err);
-        logConsole('QR', 'Error generating QR code canvas', 'error');
-      } else {
-        document.getElementById('qr-loading').style.display = 'none';
-        logConsole('QR', 'QR Code rendered. Scan with your Mobile Authenticator.', 'system');
-      }
-    });
 
     // 4. Establish WebSocket to signaling server
     const localWsUrl = `ws://${window.location.host}/tunnel/${activeSessionId}?role=browser`;

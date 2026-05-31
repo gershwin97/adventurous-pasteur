@@ -12,6 +12,15 @@ class CryptoManager {
         let ciphertext: String
     }
 
+    // Base64URL encode utility
+    func base64UrlEncode(_ data: Data) -> String {
+        var base64 = data.base64EncodedString()
+        base64 = base64.replacingOccurrences(of: "+", with: "-")
+        base64 = base64.replacingOccurrences(of: "/", with: "_")
+        base64 = base64.replacingOccurrences(of: "=", with: "")
+        return base64
+    }
+
     // Generate a new P-256 private key and store it securely in the user defaults / keychain
     func generateKeyPair(username: String) -> (privateKeyHex: String, publicKeyHex: String)? {
         let privateKey = P256.Signing.PrivateKey()
@@ -20,13 +29,29 @@ class CryptoManager {
         let privateKeyData = privateKey.rawRepresentation
         let publicKeyData = publicKey.rawRepresentation
         
-        // Save raw key data in UserDefaults (in production, use iOS Keychain)
+        let privateKeyHex = privateKeyData.map { String(format: "%02hhx", $0) }.joined()
+        let publicKeyHex = publicKeyData.map { String(format: "%02hhx", $0) }.joined()
+        let keyIdHex = String(publicKeyHex.prefix(16)).lowercased()
+        let keyId = Data(keyIdHex.utf8)
+        
+        // Base64URL encode keyId to get standard FIDO credential ID
+        let credId = base64UrlEncode(keyId)
+        
+        // Store per-credential info as a dictionary in UserDefaults
+        let credData: [String: String] = [
+            "username": username,
+            "privateKey": privateKeyData.base64EncodedString(),
+            "publicKey": publicKeyData.base64EncodedString(),
+            "keyId": keyIdHex
+        ]
+        UserDefaults.standard.set(credData, forKey: "passkey_cred_\(credId)")
+        
+        // Save raw key data in UserDefaults (in production, use iOS Keychain) - Legacy items for backward compatibility
         UserDefaults.standard.set(privateKeyData, forKey: "passkey_private")
         UserDefaults.standard.set(publicKeyData, forKey: "passkey_public")
         UserDefaults.standard.set(username, forKey: "passkey_username")
         
-        return (privateKeyData.map { String(format: "%02hhx", $0) }.joined(),
-                publicKeyData.map { String(format: "%02hhx", $0) }.joined())
+        return (privateKeyHex, publicKeyHex)
     }
 
     // Retrieve the public key coordinates for COSE mapping
@@ -47,6 +72,20 @@ class CryptoManager {
     func sign(challengeData: Data, username: String) -> Data? {
         guard let privateKeyData = UserDefaults.standard.data(forKey: "passkey_private"),
               let privateKey = try? P256.Signing.PrivateKey(rawRepresentation: privateKeyData) else {
+            return nil
+        }
+        do {
+            let signature = try privateKey.signature(for: challengeData)
+            return signature.derRepresentation // Return standard DER representation
+        } catch {
+            print("[Crypto] Signature generation failed: \(error)")
+            return nil
+        }
+    }
+
+    // Sign challenge data using raw private key representation
+    func sign(challengeData: Data, privateKeyData: Data) -> Data? {
+        guard let privateKey = try? P256.Signing.PrivateKey(rawRepresentation: privateKeyData) else {
             return nil
         }
         do {

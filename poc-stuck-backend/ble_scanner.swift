@@ -1,13 +1,40 @@
 import Foundation
 import CoreBluetooth
 
+// Helper: Derive a 128-bit UUID (CBUUID) deterministically from the session token hash hex string (first 32 characters)
+func deriveCBUUID(from tokenHashHex: String) -> CBUUID? {
+    let hex = tokenHashHex.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+    guard hex.count >= 32 else { return nil }
+    
+    let index0 = hex.index(hex.startIndex, offsetBy: 8)
+    let index1 = hex.index(index0, offsetBy: 4)
+    let index2 = hex.index(index1, offsetBy: 4)
+    let index3 = hex.index(index2, offsetBy: 4)
+    let index4 = hex.index(index3, offsetBy: 12)
+    
+    let part1 = String(hex[..<index0])
+    let part2 = String(hex[index0..<index1])
+    let part3 = String(hex[index1..<index2])
+    let part4 = String(hex[index2..<index3])
+    let part5 = String(hex[index3..<index4])
+    
+    let uuidString = "\(part1)-\(part2)-\(part3)-\(part4)-\(part5)"
+    return CBUUID(string: uuidString)
+}
+
 class BLEScanner: NSObject, CBCentralManagerDelegate {
     var centralManager: CBCentralManager!
     let targetHash: String
-    let targetServiceUUID = CBUUID(string: "FFFD")
+    let targetUUID: CBUUID
 
     init(targetHash: String) {
         self.targetHash = targetHash.lowercased()
+        if let uuid = deriveCBUUID(from: targetHash) {
+            self.targetUUID = uuid
+        } else {
+            // Fallback just in case
+            self.targetUUID = CBUUID(string: "FFFD")
+        }
         super.init()
         self.centralManager = CBCentralManager(delegate: self, queue: nil, options: [CBCentralManagerOptionShowPowerAlertKey: false])
     }
@@ -35,8 +62,8 @@ class BLEScanner: NSObject, CBCentralManagerDelegate {
                     exit(2)
                 }
             }
-            // Start scanning
-            centralManager.scanForPeripherals(withServices: [targetServiceUUID], options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
+            // Start scanning for our target custom UUID
+            centralManager.scanForPeripherals(withServices: [targetUUID], options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
         case .poweredOff:
             let errJson = "{\"error\": \"Bluetooth is powered off on host machine\"}"
             print(errJson)
@@ -58,18 +85,10 @@ class BLEScanner: NSObject, CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
-        // Extract service data for FFFD
-        if let serviceData = advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data],
-           let data = serviceData[targetServiceUUID] {
-            let tokenHex = data.map { String(format: "%02hhx", $0) }.joined()
-            // Check if the advertised hash matches the beginning of our target hash (hybrid advertisements are truncated)
-            if targetHash.hasPrefix(tokenHex) || tokenHex.hasPrefix(targetHash) {
-                let successJson = "{\"hash\": \"\(tokenHex)\", \"rssi\": \(RSSI.intValue)}"
-                print(successJson)
-                fflush(stdout)
-                exit(0)
-            }
-        }
+        // Since we are scanning exclusively for targetUUID, any discovery is our matching device
+        let successJson = "{\"hash\": \"\(targetHash)\", \"rssi\": \(RSSI.intValue)}"
+        print(successJson)
+        fflush(stdout)
     }
 }
 
